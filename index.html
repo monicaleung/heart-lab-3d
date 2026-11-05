@@ -8,7 +8,7 @@
   :root { --bg:#0f1420; --panel:#1a2133; --text:#eef2ff; --muted:#9aa6c4; --accent:#ff5a6e; --ok:#3ecf8e; --bad:#ff7a59; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,-apple-system,"PingFang HK","Microsoft JhengHei",sans-serif; background:var(--bg); color:var(--text); overflow:hidden; font-size:18px; }
-  #app { display:grid; grid-template-rows:auto 1fr auto; height:100vh; }
+  #app { display:grid; grid-template-rows:auto minmax(0,1fr) auto; height:100vh; height:100dvh; }
   header { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--panel); }
   header h1 { font-size:22px; margin:0 14px 0 0; }
   button { font:inherit; }
@@ -17,7 +17,7 @@
   .btn:hover, .tabs button:hover { filter:brightness(1.2); }
   #lang { margin-left:auto; }
   #viewSw { margin-left:18px; padding-left:18px; border-left:1px solid #33405e; }
-  main { position:relative; }
+  main { position:relative; overflow:hidden; min-height:0; }
   #scene { position:absolute; inset:0; }
   #side { position:absolute; top:14px; right:14px; width:380px; max-height:calc(100% - 28px); overflow:auto; background:rgba(26,33,51,.94); border-radius:14px; padding:16px 18px; }
   #side h2 { margin:0 0 8px; font-size:22px; }
@@ -47,6 +47,36 @@
   .ecgBtns { display:flex; flex-direction:column; gap:6px; }
   .legend { position:absolute; left:14px; bottom:14px; font-size:15px; background:rgba(26,33,51,.85); padding:8px 12px; border-radius:10px; }
   .dot { display:inline-block; width:12px; height:12px; border-radius:50%; margin:0 4px 0 10px; vertical-align:middle; }
+
+  /* ---------- Phones ---------- */
+  @media (max-width: 760px) {
+    body { font-size:16px; }
+    #app { height:100dvh; }
+    header { flex-wrap:wrap; gap:6px; padding:6px 8px; }
+    header h1 { font-size:17px; margin:0 auto 0 0; }
+    .tabs button, .btn { padding:7px 10px; font-size:14px; border-radius:8px; }
+    #viewSw { margin-left:0; padding-left:0; border-left:0; }
+    #lang { margin-left:0; }
+    header > .tabs:first-of-type { order:3; width:100%; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+    #side { top:auto; left:8px; right:8px; bottom:8px; width:auto; max-height:44%; padding:10px 12px; border-radius:12px; font-size:15px; }
+    #side h2 { font-size:18px; margin:-10px -12px 4px; padding:10px 12px 6px; cursor:pointer; position:sticky; top:-10px; background:#1a2133; z-index:1; }
+    #side h2::after { content:'▾'; float:right; color:var(--muted); }
+    #side.collapsed { max-height:46px; overflow:hidden; }
+    #side.collapsed h2::after { content:'▴'; }
+    .info { min-height:0; margin:8px 0; padding:10px; }
+    .caption { font-size:17px; min-height:0; }
+    .chip { font-size:13px; padding:5px 10px; }
+    .legend { top:8px; left:8px; bottom:auto; font-size:11px; padding:4px 8px; }
+    .legend .muted { display:none; }
+    .dot { width:9px; height:9px; margin:0 3px 0 6px; }
+    footer { flex-wrap:wrap; gap:4px 8px; padding:4px 8px 6px; }
+    .ecgStats { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px; font-size:12px; }
+    .ecgStats .big { font-size:18px; }
+    #sigStat { min-height:0 !important; font-size:11px !important; }
+    .ecgBtns { flex-direction:row; }
+    .ecgBtns button { padding:5px 8px; font-size:12px; }
+    #ecg { order:3; flex:0 0 100%; height:56px; }
+  }
 </style>
 <script type="importmap">
 { "imports": {
@@ -217,10 +247,18 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1420);
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 const HOME = new THREE.Vector3(0.9, 0.4, 7.6);
+const isPhone = () => innerWidth <= 760;
 camera.position.copy(HOME);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.target.set(1.5, 0, 0);
+// Home view: on desktop the heart sits left of the side panel; on phones it sits
+// above the bottom drawer, with the camera pulled back to fit the narrow screen.
+function homeView() {
+  if (!isPhone()) { camera.position.copy(HOME); controls.target.set(1.5, 0, 0); return; }
+  const dist = Math.min(16, Math.max(8, 2.6 / (Math.tan(THREE.MathUtils.degToRad(21)) * camera.aspect)));
+  controls.target.set(0.35, -0.32 * dist * Math.tan(THREE.MathUtils.degToRad(21)) * 2 * 0.5, 0);
+  camera.position.set(0.35, controls.target.y + 0.4, dist);
+}
 scene.add(new THREE.HemisphereLight(0xffffff, 0x334466, 1.3));
 const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(3, 5, 7); scene.add(sun);
 
@@ -661,6 +699,7 @@ side.addEventListener('click', e => {
   else return;
   renderSide();
 });
+side.addEventListener('click', e => { if (isPhone() && e.target.closest('h2')) { side.classList.toggle('collapsed'); side.scrollTop = 0; } });
 side.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.flag) { sim[t.dataset.flag] = t.checked; checkM4(); renderSide(); }
@@ -708,7 +747,7 @@ function setMode(m) {
   document.querySelectorAll('.tabs button[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
   extras.visible = m === 'journey';
   controls.enabled = m !== 'journey';
-  if (m !== 'journey') { camera.position.copy(HOME); controls.target.set(1.5, 0, 0); }
+  if (m !== 'journey') homeView();
   else jt = 0;
   setXray(); renderSide();
 }
@@ -753,9 +792,11 @@ function updateLive() {
 }
 
 // ---------- Loop ----------
+let lastPhone = null;
 function resize() {
   const w = host.clientWidth, h = host.clientHeight;
   renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); ecgResize();
+  if (isPhone() !== lastPhone) { lastPhone = isPhone(); if (mode !== 'journey') homeView(); }
 }
 addEventListener('resize', resize);
 const red = new THREE.Color(RED), blue = new THREE.Color(BLUE), tmp = new THREE.Vector3();
@@ -775,7 +816,7 @@ function loop(now) {
     cell.rotation.y += dt * 1.5;
     const idx = Math.floor(jt * JOURNEY.en.length);
     cell.material.color.lerp(idx >= 7 ? red : blue, 0.06);
-    tmp.copy(p).add(new THREE.Vector3(0, 1.6, 6.5));
+    tmp.copy(p).add(isPhone() ? new THREE.Vector3(0, 2.4, 11) : new THREE.Vector3(0, 1.6, 6.5));
     camera.position.lerp(tmp, 0.05);
     camera.lookAt(p);
   } else controls.update();
